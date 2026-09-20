@@ -1,0 +1,6 @@
+# Analysis-only deps. Not installed by the daily workflow -- keeping them out
+# keeps the scheduled run fast and gives it less to break on.
+-r requirements.txt
+jupyter>=1.0
+pandas>=2.0
+matplotlib>=3.8

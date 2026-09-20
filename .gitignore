@@ -1,0 +1,12 @@
+# The database is a derived artifact, rebuildable from data/raw/snapshots/ at
+# any time with scripts/build_db.py. Committing it would put a binary blob in
+# every daily commit and invite treating it as the source of truth, which it
+# isn't. The snapshots are what's version-controlled.
+data/processed/*.db
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store

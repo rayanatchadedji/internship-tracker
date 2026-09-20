@@ -1,0 +1,64 @@
+name: daily-pull
+
+on:
+  schedule:
+    # 08:17 UTC daily. Deliberately off the hour: GitHub queues scheduled jobs
+    # and runs starting on the hour are the most contended, so they get delayed
+    # the most. Cron here is best-effort, not guaranteed to the minute -- which
+    # is exactly why build_db.py keys off the snapshot filename rather than
+    # assuming an exact run time.
+    - cron: "17 8 * * *"
+  workflow_dispatch:  # lets a run be triggered by hand to test end to end
+
+# Never let two runs commit to the same branch at once. A scheduled run and a
+# manual one overlapping would race on the push; this makes the second wait.
+concurrency:
+  group: daily-pull
+  cancel-in-progress: false
+
+permissions:
+  contents: write  # required to push the new snapshot back to the repo
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch today's snapshot
+        run: python scripts/fetch.py
+
+      # The database is gitignored and rebuilt on demand, so this commits
+      # nothing. It runs as a smoke test: if today's snapshot is malformed,
+      # this fails now, on the day it happened, instead of silently sitting in
+      # the repo until the notebook trips over it weeks later.
+      - name: Validate snapshot by rebuilding the database
+        run: python scripts/build_db.py
+
+      - name: Commit and push snapshot
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/raw/snapshots
+          # Nothing staged means the snapshot was byte-identical to an existing
+          # one (a same-day re-run that found no changes). Not an error -- just
+          # nothing to do. `git commit` would exit 1 and fail the run.
+          if git diff --staged --quiet; then
+            echo "No snapshot changes to commit."
+            exit 0
+          fi
+          git commit -m "data: snapshot $(date -u +%Y-%m-%d)"
+          # Rebase in case another run landed a commit while this one was
+          # working, then push.
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

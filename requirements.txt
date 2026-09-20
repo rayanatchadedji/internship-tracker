@@ -1,0 +1,4 @@
+# Runtime deps for the daily pipeline (scripts/fetch.py, scripts/build_db.py).
+# Deliberately minimal -- this is what CI installs on every scheduled run.
+# sqlite3, json and argparse are stdlib, so requests is the only real dependency.
+requests>=2.31
