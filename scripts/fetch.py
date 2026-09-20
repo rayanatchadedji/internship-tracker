@@ -143,13 +143,38 @@ def main(argv: list[str] | None = None) -> int:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     out_path = args.out_dir / f"{day}.json"
-    existed = out_path.exists()
+
+    # A re-run on the same day that finds the feed unchanged should leave the
+    # file alone. fetched_at moves on every run, so writing unconditionally
+    # would make the file differ every time even when nothing about the
+    # listings did -- which would mean a same-day re-run always produces a
+    # churn commit, and the workflow's "nothing to commit" guard could never
+    # fire. Comparing everything except fetched_at is what makes that guard
+    # real. Keeping the original timestamp is also the more honest record: it
+    # is when this exact state was first observed.
+    action = "wrote"
+    if out_path.exists():
+        try:
+            existing = json.loads(out_path.read_text())
+        except json.JSONDecodeError:
+            existing = None  # corrupt file -- overwrite it
+        if isinstance(existing, dict) and {
+            k: v for k, v in existing.items() if k != "fetched_at"
+        } == {k: v for k, v in snapshot.items() if k != "fetched_at"}:
+            print(
+                f"unchanged {display(out_path)}  "
+                f"kept {snapshot['count']} of {snapshot['source_active']} active "
+                f"(feed identical since {existing['fetched_at']})"
+            )
+            return 0
+        action = "rewrote"
+
     # separators= keeps the file compact; the structure is stable and sorted, so
     # git stores day-over-day snapshots as small deltas.
     out_path.write_text(json.dumps(snapshot, separators=(",", ":")) + "\n")
 
     print(
-        f"{'rewrote' if existed else 'wrote'} {display(out_path)}  "
+        f"{action} {display(out_path)}  "
         f"kept {snapshot['count']} of {snapshot['source_active']} active "
         f"({snapshot['source_total']} total in feed)  "
         f"{out_path.stat().st_size / 1_000_000:.2f} MB"

@@ -126,7 +126,10 @@ python tests/test_build_db.py # checks the day-over-day logic
 ```
 
 Re-running `fetch.py` on the same day overwrites that day's file rather than
-creating a second one, so a manual re-run is safe.
+creating a second one, so a manual re-run is safe. If the feed hasn't moved
+since the last run, the file is left untouched entirely — the comparison
+ignores `fetched_at`, so a re-run that finds nothing new produces no diff and
+no commit, rather than churning the repo with a timestamp-only change.
 
 For the notebook: `pip install -r requirements-dev.txt`.
 
