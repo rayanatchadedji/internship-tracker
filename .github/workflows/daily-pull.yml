@@ -58,7 +58,30 @@ jobs:
             exit 0
           fi
           git commit -m "data: snapshot $(date -u +%Y-%m-%d)"
-          # Rebase in case another run landed a commit while this one was
-          # working, then push.
-          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+          # Retry the rebase+push. Both talk to github.com and both can fail
+          # for reasons that have nothing to do with this repo: on 2026-09-24
+          # the fetch and the commit succeeded and the push came back
+          # "remote: Internal Server Error" (HTTP 500). The runner is
+          # ephemeral, so that commit died with it and the day's snapshot was
+          # lost outright -- an unrecoverable gap in the history from one bad
+          # minute on GitHub's side. A single attempt is not good enough for a
+          # job whose whole value is not missing days.
+          #
+          # The rebase is inside the loop on purpose: a failed push may mean
+          # another run landed a commit first, so the next attempt has to
+          # re-sync before trying again.
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin "${GITHUB_REF_NAME}" \
+               && git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "Pushed on attempt ${attempt}."
+              exit 0
+            fi
+            if [ "${attempt}" -lt 5 ]; then
+              delay=$(( attempt * 15 ))
+              echo "Attempt ${attempt} failed; retrying in ${delay}s."
+              sleep "${delay}"
+            fi
+          done
+          echo "::error::Push failed after 5 attempts. Today's snapshot was not committed."
+          exit 1
